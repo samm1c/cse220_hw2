@@ -40,7 +40,7 @@ void print_packet(unsigned int packet[]) // print the packet's information
      int first_BE = packet[1] & 15; // mask for last 4 bits
      printf("1st BE: %d\n", first_BE);
 
-     printf("Data:");
+     printf("Data: ");
      if (type == 0) {
           bool keep[4]; // list to keep track of which bytes to keep for first and last BE
           for (int i = 0; i < 4; i++) { // initialize keep
@@ -59,22 +59,21 @@ void print_packet(unsigned int packet[]) // print the packet's information
           if ((first_BE & 8) == 8)  { // 8 -> 1000 ; fourth byte
                keep[3] = true;
           }
-          int first_word = packet[3]; // variable needed b/c will use bitwise operators on it
+          //int first_word = packet[3]; // variable needed b/c will use bitwise operators on it
           int j = 0;
-          printf("\nfirst:word: %d\n", first_word);
-          for (int i = 0; i < 4 && j < 4; i++) {
-               if (keep[i]) { // keep going until you hit a false and print the whole thing out
-                    j = i; // second counter
-                    while (j < 4 && keep[j]) {
-                         j++;
-                    }
-                    first_word = first_word >> (8*j); // skip j bytes
-                    printf(" %d", first_word);
-               } // otherwise don't do anything if there's no true
-          }
+          // for (int i = 0; i < 4 && j < 4; i++) {
+          //      if (keep[i]) { // keep going until you hit a false and print the whole thing out
+          //           j = i; // second counter
+          //           while (j < 4 && keep[j]) {
+          //                j++;
+          //           }
+          //           first_word = first_word >> (8*j); // skip j bytes
+          //           printf("%d ", first_word);
+          //      } // otherwise don't do anything if there's no true
+          // }
           // middle data words
-          for (int i = 4; i < length + 3 - 1; i++) {
-               printf(" %d", packet[i]);
+          for (int i = 3; i < length + 3 - 1; i++) {
+               printf("%d ", packet[i]);
           }
           //clear the "keep" list
           for (int k = 0; k < 4; k++) {
@@ -102,7 +101,7 @@ void print_packet(unsigned int packet[]) // print the packet's information
                          j++;
                     }
                     last_word = last_word >> (8*j);
-                    printf(" %d", last_word);
+                    printf("%d ", last_word);
                }
           }
      }
