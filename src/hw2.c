@@ -86,7 +86,7 @@ void store_values(unsigned int packets[], char *memory)
 
                     for (int k = 0; k < 4; k++) { // 4 times; k has no bearing
                          if ((byte_enable & 1) == 1) {
-                              ((unsigned int *)memory)[m] = data & 255; // extract last 8 bits
+                              memory[m] = data & 255; // extract last 8 bits
                          }
                          byte_enable = byte_enable >> 1; // cut last bit
                          data = data >> 8; // get rid of last 8 bits = 1 byte that we read
@@ -96,7 +96,7 @@ void store_values(unsigned int packets[], char *memory)
 
                } else { // middle elements
                     for (int k = 0; k < 4; k++) { // 4 times, k has no bearing
-                         ((unsigned int *)memory)[m] = data & 255; // extract last 8 bits = 1 byte
+                         memory[m] = data & 255; // extract last 8 bits = 1 byte
                          data = data >> 8; // get rid of last 8
                          m++; // next memory
                     }
