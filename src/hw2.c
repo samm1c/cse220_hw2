@@ -269,12 +269,6 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
           // done creating completion packets so now read the next read request
      }
 
-     // for (int x = 3; x < c; x++) {
-     //      printf("x: %d \t %d\n", x, completion[x]);
-     // }
-     // printf("m: %d\n", m); 
-
-
      // finally return ALL of the completion packets
      return completion;
      return (void *)memory;
