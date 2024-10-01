@@ -130,7 +130,7 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
      }
 
      // create and initialize completion packets array (size does not need to be fixed b/c we are malloc'ing it)
-     unsigned int *completion = (unsigned int *)malloc(sizeof(int) * total_length); 
+     unsigned int *completion = (unsigned int *)malloc(10 * sizeof(int) * total_length); 
 
      while (valid_packet) {
           
