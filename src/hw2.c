@@ -116,7 +116,7 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
      int num_comp = 0; // number of packets in the completion
      
      int length, id, tag, last_BE, first_BE, address; // variables of read request
-     int byte_count, lower_address, split_length, rem; // variables of completion packet
+     int byte_count, lower_address_1, lower_address_2, length_1, length_2, address_1, address_2, rem; // variables of completion packet
      int total_length = 0; // total lengths of all packets
 
      bool valid_packet = true; // to loop though each packet one by one
@@ -144,13 +144,15 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
      }
 
      i = 0; // reset packet index
-     m = address; // make sure index of memory pointer we are reading data from is at the right index
+     
      // create and initialize the completion packets array (size does not need to be fixed b/c it's malloc'ed)
      //unsigned int* completion = (unsigned int*)malloc(20 * (((sizeof(int) * 3 * num_comp)) + (sizeof(int) * total_length))); // header + payload
      unsigned int* completion = (unsigned int*)malloc(sizeof(int)*89); // header + payload
      //unsigned int* completion = (unsigned int*)malloc(1000000 * (3 * num_comp) + (sizeof(int) * total_length)); // header + payload
 
      // parse through read request and create completion packet(s) based off it
+     //printf("num_read %d\n", num_read);
+     //printf("total_length %d\n", total_length);
      for (int r = 0; r < num_read; r++) { // r (number of read request packets) times; r has no bearing
           int n = 0; // keeps track of row to check if it's the first or last row for BE
           // headers
@@ -163,6 +165,8 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
           i++; // end of int[1]
           address = packets[i];
           i++; // end of int[2]; ready to read the next read request
+
+          m = address; // make sure index of memory pointer we are reading data from is at the right index
 
           // completion packets
           // use address and length to tell if it's crossed 0x4000 boundary; if so, must create multiple packets
@@ -177,60 +181,129 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
           }
 
           // produce completion packets
-          for (int k = 0; k < num_read; k++) { // p (number of packets) times; k has no bearing
-               
-               // requester id, tag, and completer id are the same
-               completion[c] = ((37) << 25); 
-               completion[c + 1] = (220 << 16);
-               completion[c + 2] = (id << 16) | (tag << 8);
-               
+
                if (split) { // split DOES occur -> multiple packets
+                    
+                    // calculations
                     rem = 0x4000 - (address % 0x4000); // take index 14 bit for the remaining (how far up the boundary you're at) 
-                                                            // and subtract 0x4000 from that to get the actual remaining number of addresses 
-                                                        // to the next boundary
-                    split_length = rem / 4; // how long the split for this packet will be
-                    address += rem; // add the leftover remaining to reach the next boundary
-                    lower_address = address & 0x7F; // because 0x7F = 0000 0111 1111 for last 7 bits               
+                                                       // and subtract 0x4000 from that to get the actual number of bytes up until next boundary address
+                    
+                    length_1 = rem / 4; // how long the split for this packet will be
+                    length_2 = length - length_1; // remaining length leftover
+                    address_1 = address; // takes on same as address b/c that's the start
+                    address_2 = address_1 + rem; // add the leftover remaining to reach the next boundary, which is the next address
+                    lower_address_1 = address_1 & 0x7F; // because 0x7F = 0000 0111 1111 for last 7 bits
+                    lower_address_2 = address_2 & 0x7F; // because 0x7F = 0000 0111 1111 for last 7 bits
+                    byte_count = length * 4; // CURRENT remaining bytes 
                     //printf("rem: %d\n", rem);
                     //printf("length: %d\n", length);
 
-                    // now that you calculated everything you need to update header
-                    completion[c] |= split_length;
+                    // now that you calculated everything you need to update the first header
+                    completion[c] = ((37) << 25); 
+                    completion[c + 1] = (220 << 16);
+                    completion[c + 2] = (id << 16) | (tag << 8);
+
+                    completion[c] |= length_1;
                     c++; // end of int[0]
                     completion[c] |= byte_count;
                     c++; // end of int[1]
-                    completion[c] |= lower_address;
+                    completion[c] |= lower_address_1;
                     c++; // end of int[2]
-                    printf("split_length: %d\n", split_length);
 
+                    printf("-------------------\n");
+                    printf("length1: %d\n", length_1);
+                    printf("firstbe: %d\n", first_BE);
+                    printf("lastbe: %d\n", last_BE);
                     // load the data into the payload
-                    for (int a = 0; a < split_length; a++) { // iterate over rows
+                    for (int a = 0; a < length_1; a++) { // iterate over rows
                          if (n == 0 || n == length - 1) { // first or last BE
                               int byte_enable;
-                              if (a == 0) {
+                              if (n == 0) {
                                    byte_enable = first_BE;
-                              } else if (a == length - 1) {
+                              } else if (n == length - 1) {
                                    byte_enable = last_BE;
                               }
+                              printf("byte_enable: %d\n", byte_enable);
+                              completion[c] = 0;
                               for (int b = 0; b < 4; b++) { // per row
                                    if ((byte_enable & 1) == 1) {
-                                        completion[c] |= memory[m] << (b * 4);
+                                        completion[c] |= ((unsigned char)(memory[m]) << (b * 8));
+                                        printf("c:%d \t completion[c]:%d \t\tmemory[m]:%d \n", c, completion[c], (unsigned char)memory[m]);
                                    }
                                    byte_enable = byte_enable >> 1; // cut last bit
                                    m++;
                               }
                          } else { // no need for BE; just do it normally
                               for (int b = 0; b < 4; b++) {
-                                   completion[c] |= memory[m] << (b * 4);
+                                   completion[c] = 0;
+                                   completion[c] |= ((unsigned char)(memory[m]) << (b * 8));
+                                   printf("c:%d \t completion[c]:%d \t\tmemory[m]:%d \n", c, completion[c], (unsigned char)memory[m]);
                                    m++;
                               }
                          }
                          c++; n++;
                          //printf("c: %d\n", c); 
                     }
-                    byte_count -= rem; // update the total leftover number of bytes
+                    printf("FIRST SPLIT PACKET DONE c: %d\n", c);
+                    printf("length2: %d\n", length_2);
+                    printf("address: %d \t m: %d\n", address, m);
+
+                    byte_count -= rem; // update byte count
+
+                    // create second header
+                    completion[c] = ((37) << 25); 
+                    completion[c + 1] = (220 << 16);
+                    completion[c + 2] = (id << 16) | (tag << 8);
+
+                    completion[c] |= length_2;
+                    //completion[c] |= 0;
+                    c++; // end of int[0]
+                    completion[c] |= byte_count;
+                    //completion[c] |= 0;
+                    c++; // end of int[1]
+                    completion[c] |= lower_address_2;
+                    //completion[c] |= 0;
+                    c++; // end of int[2]
+
+                    // load the data into the payload
+                    for (int a = 0; a < length_2; a++) { // iterate over rows
+                         if (n == 0 || n == length - 1) { // first or last BE
+                              int byte_enable;
+                              if (n == 0) {
+                                   byte_enable = first_BE;
+                              } else if (n == length - 1) {
+                                   byte_enable = last_BE;
+                              }
+                              printf("byte_enable: %d\n", byte_enable);
+
+                              completion[c] = 0;
+
+                              for (int b = 0; b < 4; b++) { // per row
+                                   if ((byte_enable & 1) == 1) {
+                                        completion[c] |= (unsigned int)((unsigned char)(memory[m]) << (b * 8));
+                                        printf("c:%d \t completion[c]:%d \t\tmemory[m]:%d \n", c, completion[c], (unsigned char)memory[m]);
+                                   }
+                                   byte_enable = byte_enable >> 1; // cut last bit
+                                   m++;
+                              }
+                         } else { // no need for BE; just do it normally
+                              completion[c] = 0;
+                              for (int b = 0; b < 4; b++) {
+                                   completion[c] |= (unsigned int)((unsigned char)(memory[m]) << (b * 8));
+                                   printf("c:%d \t completion[c]:%d \t\tmemory[m]:%d \n", c, completion[c], (unsigned char)memory[m]);
+                                   m++;
+                              }
+                         }
+                         c++; n++;
+                    }
+                    printf("SECOND SPLIT PACKET DONE c: %d\n", c);
+                    printf("address: %d \t length: %d \t m: %d\n", address, length, m);
                } else { // split does NOT occur; single packet
-                    // finish header
+                    // header
+                    completion[c] = ((37) << 25); 
+                    completion[c + 1] = (220 << 16);
+                    completion[c + 2] = (id << 16) | (tag << 8);
+
                     completion[c] |= length;
                     c++; // end of int[0]
                     completion[c] |= (length * 4);
@@ -239,6 +312,7 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
                     c++;
                     // load data from memory
                     for (int a = 0; a < length; a++) {
+                         //printf("m: %d\t", m);
                          if (n == 0 || n == length - 1) { // first or last BE
                               int byte_enable;
                               if (a == 0) {
@@ -246,37 +320,39 @@ unsigned int* create_completion(unsigned int packets[], const char *memory)
                               } else if (a == length - 1) {
                                    byte_enable = last_BE;
                               }
-                              printf("c:%d \t completion[c]:%d\n", c, completion[c]);
+                              //printf("byte_enable: %d\n", byte_enable);
                               completion[c] = 0;
+                              
                               for (int b = 0; b < 4; b++) { // per row
                                    if ((byte_enable & 1) == 1) {
-                                        completion[c] |= ((unsigned char)memory[m] << (b * 8));
-                                        //printf("c:%d \t completion[c]:%d \tmemory[m]:%d \t shifted:%d\n", c, completion[c], memory[m], (20 | (memory[m] << (b * 9))));
+                                        //completion[c] = 0;
+                                        completion[c] |= (unsigned int)((unsigned char)(memory[m]) << (b * 8));
+                                        //printf("edge BE: c:%d \t completion[c]:%d \t\tmemory[m]:%d \n", c, completion[c], (unsigned char)memory[m]);
                                    }
                                    byte_enable = byte_enable >> 1; // cut last bit
                                    m++;
                               }
                          } else { // no need for BE; just do it normally
+                              completion[c] = 0;
                               for (int b = 0; b < 4; b++) {
-                                   completion[c] |= ((unsigned char)memory[m] << (b * 8));
+                                   //completion[c] = 0;
+                                   completion[c] |= (unsigned int)((unsigned char)(memory[m]) << (b * 8));
+                                   //printf("c:%d \t completion[c]:%d \t\tmemory[m]:%d \n", c, completion[c], (unsigned char)memory[m]);
                                    m++;
                               }
                          }
                          c++; n++; // both are entire rows
+                         //printf("n: %d entire payload row done\n" , n);
                     }
                }
-          }
           // done creating completion packets so now read the next read request
+          //printf("1 full packet of length %d done\n", length);
      }
+
+     // for (int s = 0; s < c; s++) {
+     //      printf("c:%d \t completion: %d\n", s, completion[s]);
+     // }
 
      // finally return ALL of the completion packets
      return completion;
-     return (void *)memory;
 }
-               // so basically i have my number of packets to create in completion 
-               // so the next step is actually creating those packets
-               // splitting packets AND single packets,, not sure if i want to separate them but im putting into singular for loop as shown
-               // have not done BE yet
-               // 
-               // lower address relatively easy wher you just take the last 7 bits and return its value
-               // need to take data from memory and put into completion
